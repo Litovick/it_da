@@ -1,0 +1,6 @@
+{
+  "name": "잇다(It-Da) · 춘천 시니어 대중교통 안내",
+  "description": "춘천 지역 고령층을 위한 음성·진동 중심 안전 대중교통 동행 안내 서비스 프로토타입",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

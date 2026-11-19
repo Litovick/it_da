@@ -40,6 +40,15 @@ input {
 
 button {
   -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition: transform 110ms ease, filter 110ms ease, background-color 120ms ease, border-color 120ms ease;
+}
+
+button:not(:disabled):active {
+  transform: scale(0.97);
+  filter: brightness(0.95);
 }
 
 button:focus-visible,
@@ -323,12 +332,7 @@ input:focus-visible {
   border-radius: 999px;
   cursor: pointer;
   box-shadow: 0 8px 22px rgba(38, 63, 158, 0.12);
-  transition: 180ms ease;
-}
-
-.guardian-status:hover,
-.audio-toggle-btn:hover {
-  transform: translateY(-1px);
+  transition: transform 110ms ease, filter 110ms ease, background-color 120ms ease;
 }
 
 .guardian-status-label {
@@ -896,12 +900,7 @@ input:focus-visible {
   cursor: pointer;
   font-size: 14px;
   font-weight: 900;
-  transition: 160ms ease;
-}
-
-.destination-form button:hover {
-  background: #d4650c;
-  transform: translateY(-1px);
+  transition: transform 110ms ease, filter 110ms ease, background-color 120ms ease;
 }
 
 .destination-form .destination-voice-button {
@@ -914,11 +913,6 @@ input:focus-visible {
   background: #edf1ff;
   border-radius: 13px;
   place-items: center;
-}
-
-.destination-form .destination-voice-button:hover {
-  color: #fff;
-  background: #3155d5;
 }
 
 .destination-form .destination-voice-button.is-listening {
@@ -1162,15 +1156,6 @@ input:focus-visible {
   box-shadow: none;
 }
 
-.replay-voice-btn:hover {
-  background: #fff;
-  transform: translateY(-1px);
-}
-
-.replay-voice-btn.is-subtle:hover {
-  background: rgba(255, 255, 255, 0.24);
-}
-
 /* Missed-stop / Return Recovery Action Card */
 .recovery-panel {
   position: relative;
@@ -1278,11 +1263,7 @@ input:focus-visible {
   cursor: pointer;
   text-align: left;
   box-shadow: 0 14px 28px rgba(46, 83, 199, 0.2);
-  transition: 160ms ease;
-}
-
-.home-feature-card:hover {
-  transform: translateY(-1px);
+  transition: transform 110ms ease, filter 110ms ease;
 }
 
 .feature-icon {
@@ -1414,8 +1395,10 @@ input:focus-visible {
   box-shadow: 0 16px 34px rgba(49, 85, 213, 0.24);
 }
 
-.favorite-card:hover {
-  transform: translateY(-2px);
+.favorite-card:not(.primary):active {
+  background: #f2f5fc;
+  transform: scale(0.98);
+  filter: none;
 }
 
 .favorite-icon {
@@ -1648,8 +1631,10 @@ input:focus-visible {
   font-weight: 900;
 }
 
-.recent-route > button:hover {
-  background: #e1e8ff;
+.recent-route > button:active {
+  background: #dfe7ff;
+  transform: scale(0.98);
+  filter: none;
 }
 
 /* Assistant Feedback */
@@ -1834,13 +1819,15 @@ input:focus-visible {
   font-size: 13px;
   font-weight: 900;
   word-break: keep-all;
-  transition: 160ms ease;
+  transition: transform 110ms ease, background-color 110ms ease, border-color 110ms ease;
 }
 
-.demo-commands button:hover {
-  color: #fff;
-  background: #3155d5;
-  border-color: #3155d5;
+.demo-commands button:active {
+  color: #1b2f70;
+  background: #e9eefb;
+  border-color: #bac6ea;
+  transform: scale(0.97);
+  filter: none;
 }
 
 /* Bottom Navigation (Always Pinned at Viewport Bottom) */
@@ -1873,7 +1860,7 @@ input:focus-visible {
   border: 0;
   border-radius: 14px;
   cursor: pointer;
-  transition: 160ms ease;
+  transition: transform 110ms ease, background-color 110ms ease, color 110ms ease;
 }
 
 .bottom-nav button span {
@@ -1887,9 +1874,11 @@ input:focus-visible {
   box-shadow: 0 6px 14px rgba(49, 85, 213, 0.24);
 }
 
-.bottom-nav button:hover:not(.is-active) {
+.bottom-nav button:not(.is-active):active {
   color: #172344;
-  background: #f0f3fc;
+  background: #edf1fa;
+  transform: scale(0.96);
+  filter: none;
 }
 
 .home-indicator {
@@ -2154,6 +2143,13 @@ input:focus-visible {
   word-break: keep-all;
 }
 
+.consent-row small.ios-vibration-note {
+  margin-top: 2px;
+  color: #3155d5;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
 .consent-row input {
   position: absolute;
   opacity: 0;
@@ -2273,12 +2269,14 @@ input:focus-visible {
   border-radius: 16px;
   cursor: pointer;
   text-align: left;
-  transition: 160ms ease;
+  transition: transform 110ms ease, background-color 110ms ease, border-color 110ms ease;
 }
 
-.management-list button:hover {
-  background: #f6f8fe;
+.management-list button:active {
+  background: #f1f4fc;
   border-color: #c9d5f5;
+  transform: scale(0.98);
+  filter: none;
 }
 
 .management-list button > span {
@@ -2468,13 +2466,14 @@ input:focus-visible {
   border-radius: 18px;
   cursor: pointer;
   text-align: left;
-  transition: 160ms ease;
+  transition: transform 110ms ease, background-color 110ms ease, border-color 110ms ease;
 }
 
-.help-actions button:hover {
-  background: #edf1ff;
+.help-actions button:active {
+  background: #eaeffc;
   border-color: #c9d5f5;
-  transform: translateY(-1px);
+  transform: scale(0.97);
+  filter: none;
 }
 
 .help-actions button > span {
@@ -2677,6 +2676,67 @@ input:focus-visible {
   50% {
     transform: scale(1.035);
     opacity: 0.96;
+  }
+}
+
+/* Desktop / Fine-Pointer Hover Styles Only (Prevents Sticky Hover on Touch Devices) */
+@media (hover: hover) and (pointer: fine) {
+  .guardian-status:hover,
+  .audio-toggle-btn:hover {
+    transform: translateY(-1px);
+  }
+
+  .destination-form button:hover {
+    background: #d4650c;
+    transform: translateY(-1px);
+  }
+
+  .destination-form .destination-voice-button:hover {
+    color: #fff;
+    background: #3155d5;
+  }
+
+  .replay-voice-btn:hover {
+    background: #fff;
+    transform: translateY(-1px);
+  }
+
+  .replay-voice-btn.is-subtle:hover {
+    background: rgba(255, 255, 255, 0.24);
+  }
+
+  .home-feature-card:hover {
+    transform: translateY(-1px);
+  }
+
+  .favorite-card:hover {
+    transform: translateY(-2px);
+  }
+
+  .recent-route > button:hover {
+    background: #e1e8ff;
+  }
+
+  .demo-commands button:hover {
+    color: #fff;
+    background: #3155d5;
+    border-color: #3155d5;
+  }
+
+  .bottom-nav button:hover:not(.is-active) {
+    color: #172344;
+    background: #f0f3fc;
+  }
+
+  .management-list button:hover {
+    background: #f6f8fe;
+    border-color: #c9d5f5;
+  }
+
+  .help-actions button:hover {
+    background: #edf1ff;
+    border-color: #c9d5f5;
+    transform: translateY(-1px);
   }
 }
 

@@ -133,7 +133,7 @@ export function SettingsModal({
                   <strong>음성 안내</strong>
                   <small>
                     {voiceEnabled
-                      ? `켜짐 · ${voiceSpeed === "slow" ? "천천히 (0.75x)" : "보통 (0.9x)"}`
+                      ? `켜짐 · ${voiceSpeed === "slow" ? "천천히 (0.68x)" : "보통 (1.05x)"}`
                       : "꺼짐 · 화면과 진동으로만 안내"}
                   </small>
                 </span>
@@ -151,19 +151,32 @@ export function SettingsModal({
                     <button
                       type="button"
                       className={voiceSpeed === "slow" ? "is-active" : ""}
-                      onClick={() => onChangeVoiceSpeed("slow")}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        onChangeVoiceSpeed("slow");
+                      }}
                     >
                       천천히
                     </button>
                     <button
                       type="button"
                       className={voiceSpeed === "normal" ? "is-active" : ""}
-                      onClick={() => onChangeVoiceSpeed("normal")}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        onChangeVoiceSpeed("normal");
+                      }}
                     >
                       보통
                     </button>
                   </div>
-                  <button type="button" className="inline-test-btn" onClick={onTestVoice}>
+                  <button
+                    type="button"
+                    className="inline-test-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onTestVoice();
+                    }}
+                  >
                     <Icon name="volume" className="h-4 w-4" />
                     <span>소리 확인</span>
                   </button>
@@ -174,6 +187,9 @@ export function SettingsModal({
                 <span>
                   <strong>진동 알림</strong>
                   <small>버스 도착·하차 전·정차 완료 시 진동</small>
+                  <small className="ios-vibration-note">
+                    아이폰 웹 브라우저에서는 진동 대신 알림음으로 안내됩니다.
+                  </small>
                 </span>
                 <input
                   type="checkbox"
@@ -185,10 +201,17 @@ export function SettingsModal({
 
               {vibrationEnabled && (
                 <div className="setting-inline-bar">
-                  <span className="inline-hint">주머니 속에서도 진동으로 알려드려요</span>
-                  <button type="button" className="inline-test-btn" onClick={onTestVibration}>
+                  <span className="inline-hint">주머니 속에서도 진동·알림음으로 알려드려요</span>
+                  <button
+                    type="button"
+                    className="inline-test-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onTestVibration();
+                    }}
+                  >
                     <Icon name="bell" className="h-4 w-4" />
-                    <span>진동 확인</span>
+                    <span>알림 확인</span>
                   </button>
                 </div>
               )}

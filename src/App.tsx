@@ -7,6 +7,11 @@ import {
   ChuncheonRoute,
   matchChuncheonDestination,
 } from "./data/chuncheonRoutes";
+import {
+  ChimeType,
+  playNotificationChime,
+  unlockAudioContext,
+} from "./utils/soundChime";
 
 type ExperienceMode = "setup" | "confirm" | "journey";
 type BusMotionState = "moving" | "stopped";
@@ -155,9 +160,15 @@ export default function App() {
   const waitTimerRef = useRef<number | null>(null);
   const stopDelayRef = useRef<number | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const ttsDelayRef = useRef<number | null>(null);
+  const voiceEnabledRef = useRef(voiceEnabled);
+  const voiceSpeedRef = useRef(voiceSpeed);
   const destinationInputRef = useRef<HTMLInputElement | null>(null);
   const appShellRef = useRef<HTMLElement | null>(null);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+
+  voiceEnabledRef.current = voiceEnabled;
+  voiceSpeedRef.current = voiceSpeed;
 
   const activeStep = activeRoute.steps[stepIndex];
   const progress =
@@ -170,6 +181,19 @@ export default function App() {
       setNowTime(formatClock(new Date()));
     }, 30000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  // Unlock iOS Web Audio API on first touch / pointer interaction
+  useEffect(() => {
+    const handleFirstGesture = () => {
+      unlockAudioContext();
+    };
+    window.addEventListener("pointerdown", handleFirstGesture, { once: true, passive: true });
+    window.addEventListener("touchstart", handleFirstGesture, { once: true, passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", handleFirstGesture);
+      window.removeEventListener("touchstart", handleFirstGesture);
+    };
   }, []);
 
   useEffect(() => {
@@ -186,30 +210,87 @@ export default function App() {
   }, [voiceEnabled, voiceSpeed, vibrationEnabled, guardianSharing, favoriteIds, tripHistory]);
 
   const speakMessage = useCallback(
-    (text: string) => {
-      if (!voiceEnabled) return;
+    (text: string, options?: { delayMs?: number; speedOverride?: "slow" | "normal" }) => {
+      if (!voiceEnabledRef.current) return;
       if (!("speechSynthesis" in window)) return;
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "ko-KR";
-      utterance.rate = voiceSpeed === "slow" ? 0.75 : 0.9;
-      utterance.pitch = 1;
-      window.speechSynthesis.speak(utterance);
+
+      if (ttsDelayRef.current) {
+        window.clearTimeout(ttsDelayRef.current);
+        ttsDelayRef.current = null;
+      }
+
+      const runSpeech = () => {
+        if (!voiceEnabledRef.current) return;
+        window.speechSynthesis.cancel();
+        const activeSpeed = options?.speedOverride ?? voiceSpeedRef.current;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = "ko-KR";
+        utterance.rate = activeSpeed === "slow" ? 0.68 : 1.05;
+        utterance.pitch = 1;
+        window.speechSynthesis.speak(utterance);
+      };
+
+      const delay = options?.delayMs ?? 0;
+      if (delay > 0) {
+        window.speechSynthesis.cancel();
+        ttsDelayRef.current = window.setTimeout(runSpeech, delay);
+      } else {
+        runSpeech();
+      }
     },
-    [voiceEnabled, voiceSpeed],
+    [],
   );
 
   const triggerHaptic = useCallback(
-    (pattern: number[], toastLabel: string) => {
-      if (!vibrationEnabled) return;
-      navigator.vibrate?.(pattern);
-      setVibrationToast(toastLabel);
-      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = window.setTimeout(() => {
-        setVibrationToast(null);
-      }, 3600);
+    (pattern: number[], toastLabel: string, chimeType: ChimeType = "arrival"): number => {
+      let chimeDelayMs = 0;
+
+      if (voiceEnabledRef.current) {
+        chimeDelayMs = playNotificationChime(chimeType);
+      }
+
+      if (vibrationEnabled) {
+        navigator.vibrate?.(pattern);
+      }
+
+      if (vibrationEnabled || chimeDelayMs > 0) {
+        setVibrationToast(toastLabel);
+        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = window.setTimeout(() => {
+          setVibrationToast(null);
+        }, 3600);
+      }
+
+      return chimeDelayMs;
     },
     [vibrationEnabled],
+  );
+
+  const handleToggleVoice = useCallback((enabled: boolean) => {
+    voiceEnabledRef.current = enabled;
+    setVoiceEnabled(enabled);
+    if (!enabled) {
+      if (ttsDelayRef.current) {
+        window.clearTimeout(ttsDelayRef.current);
+        ttsDelayRef.current = null;
+      }
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    } else {
+      unlockAudioContext();
+    }
+  }, []);
+
+  const handleChangeVoiceSpeed = useCallback(
+    (nextSpeed: "slow" | "normal") => {
+      voiceSpeedRef.current = nextSpeed;
+      setVoiceSpeed(nextSpeed);
+      if (voiceEnabledRef.current) {
+        speakMessage("안내 속도가 변경되었습니다.", { speedOverride: nextSpeed });
+      }
+    },
+    [speakMessage],
   );
 
   // Build step copy respecting Principle 2 (Hierarchy) and Principle 4 (No alighting while moving)
@@ -541,19 +622,23 @@ export default function App() {
         return;
       }
 
-      // Step 2: Missed bus handling (부드러운 장진동 + 8분 대기 타이머 재설정)
+      // Step 2: Missed bus handling (부드러운 장진동 + 차분한 1음 알림음 + 8분 대기 타이머 재설정)
       if (stepIndex === 2 && command.includes("놓쳤")) {
         setWaitMinutes(8);
         setBusStopsAway(5);
         const message =
           "버스를 놓치셨나요? 괜찮습니다. 다음 버스는 약 8분 뒤 도착할 예정입니다. 정류장 의자에 앉아 기다리시면 다시 알려드릴게요.";
         setAssistantMessage(message);
-        speakMessage(message);
-        triggerHaptic([450, 180, 450], "진동 알림: 다음 버스를 안내해 드릴게요");
+        const chimeDelay = triggerHaptic(
+          [450, 180, 450],
+          "진동 알림: 다음 버스를 안내해 드릴게요",
+          "recovery",
+        );
+        speakMessage(message, { delayMs: chimeDelay });
         return;
       }
 
-      // Step 3: Route deviation check (Principle 3: never accuse wrong boarding + 긴 경고 3회 진동)
+      // Step 3: Route deviation check (Principle 3: never accuse wrong boarding + 긴 경고 3회 진동 + 3연속 경고음)
       if (
         stepIndex === 3 &&
         (command.includes("다른길") ||
@@ -565,12 +650,16 @@ export default function App() {
         setDeviationCheckOpen(true);
         const message = `예정된 경로와 다르게 이동하고 있을 수 있어요. 버스 번호(${activeRoute.busNumber}번)를 확인해 주세요. 버스가 멈춘 뒤 안전하게 이동해 주세요.`;
         setAssistantMessage(message);
-        speakMessage(message);
-        triggerHaptic([700, 180, 700, 180, 700], "경고 진동: 버스 번호를 확인해 주세요");
+        const chimeDelay = triggerHaptic(
+          [700, 180, 700, 180, 700],
+          "경고 진동: 버스 번호를 확인해 주세요",
+          "alert",
+        );
+        speakMessage(message, { delayMs: chimeDelay });
         return;
       }
 
-      // Step 3: Missed stop recovery (Principle 4 + 부드러운 장진동)
+      // Step 3: Missed stop recovery (Principle 4 + 부드러운 장진동 + 차분한 1음 알림음)
       if (stepIndex === 3 && command.includes("지나쳤")) {
         setDeviationCheckOpen(false);
         setSafeRecoveryMode(false);
@@ -580,8 +669,12 @@ export default function App() {
             ? "하차를 못 하셨나요? 괜찮습니다. 버스가 움직이는 동안에는 일어나지 마시고, 다음 정류장에서 안전하게 내리시면 돌아가는 경로를 다시 안내해 드릴게요."
             : "하차를 못 하셨나요? 괜찮습니다. 지금 버스가 멈춰 있으니 안전하게 내리신 뒤 아래 버튼을 눌러 주세요.";
         setAssistantMessage(message);
-        speakMessage(message);
-        triggerHaptic([450, 180, 450], "진동 알림: 다음 정류장에서 안전하게 내리세요");
+        const chimeDelay = triggerHaptic(
+          [450, 180, 450],
+          "진동 알림: 다음 정류장에서 안전하게 내리세요",
+          "recovery",
+        );
+        speakMessage(message, { delayMs: chimeDelay });
         if (busMotionState === "moving") {
           if (stopDelayRef.current) window.clearTimeout(stopDelayRef.current);
           stopDelayRef.current = window.setTimeout(() => {
@@ -708,9 +801,14 @@ export default function App() {
         if (prev <= 0) return 0;
         const next = prev - 1;
         if (next === 1) {
-          triggerHaptic([160, 100, 160], "진동 알림: 버스가 곧 도착합니다");
+          const chimeDelay = triggerHaptic(
+            [160, 100, 160],
+            "진동 알림: 버스가 곧 도착합니다",
+            "arrival",
+          );
           speakMessage(
             `${activeRoute.busNumber}번 버스가 약 1분 후 도착합니다. 버스가 멈춘 뒤 탑승하세요.`,
+            { delayMs: chimeDelay },
           );
         }
         return next;
@@ -745,7 +843,7 @@ export default function App() {
     };
   }, [deviationCheckOpen, experienceMode, recoveryStage, safeRecoveryMode, stepIndex]);
 
-  // Safety vibration & voice alerts during ride
+  // Safety vibration, chime & voice alerts during ride
   useEffect(() => {
     if (
       experienceMode !== "journey" ||
@@ -757,19 +855,27 @@ export default function App() {
     }
 
     if (remainingStops === 2 && busMotionState === "moving") {
-      // 중간 2회 진동
-      triggerHaptic([260, 120, 260], "진동 알림: 두 정거장 남았습니다");
+      // 중간 2회 진동 + 2음 차임벨
+      const chimeDelay = triggerHaptic(
+        [260, 120, 260],
+        "진동 알림: 두 정거장 남았습니다",
+        "arrival",
+      );
       const msg = "두 정거장 남았어요. 아직 자리에 앉아 내릴 준비만 해주세요.";
       setAssistantMessage(msg);
-      speakMessage(msg);
+      speakMessage(msg, { delayMs: chimeDelay });
     }
 
     if (remainingStops === 1 && busMotionState === "moving") {
-      // 1정거장 전 짧은 진동 알림 + 명확한 하차 준비 음성 안내
-      triggerHaptic([140, 80, 140], "진동 알림: 1정거장 전 · 내릴 준비를 하세요");
+      // 1정거장 전 짧은 진동 + 2음 차임벨 + 명확한 하차 준비 음성 안내
+      const chimeDelay = triggerHaptic(
+        [140, 80, 140],
+        "진동 알림: 1정거장 전 · 내릴 준비를 하세요",
+        "arrival",
+      );
       const msg = `내릴 준비를 하세요. 다음 정류장이 ${activeRoute.destinationStopName}입니다. 버스가 완전히 멈춘 뒤 안전하게 일어나세요.`;
       setAssistantMessage(`내릴 준비를 하세요. 다음은 ${activeRoute.destinationStopName}입니다.`);
-      speakMessage(msg);
+      speakMessage(msg, { delayMs: chimeDelay });
     }
 
     if (remainingStops === 0 && busMotionState === "moving") {
@@ -788,12 +894,13 @@ export default function App() {
     experienceMode,
     recoveryStage,
     remainingStops,
+    safeRecoveryMode,
     speakMessage,
     stepIndex,
     triggerHaptic,
   ]);
 
-  // Announce safe stop completion (강한 3회 진동)
+  // Announce safe stop completion (강한 3회 진동 + 2음 차임벨)
   useEffect(() => {
     if (experienceMode !== "journey" || stepIndex !== 3) return;
     if (
@@ -802,22 +909,34 @@ export default function App() {
       recoveryStage === "none" &&
       !safeRecoveryMode
     ) {
-      triggerHaptic([520, 160, 520, 160, 520], "진동 알림: 정차 완료 · 이제 내리세요");
+      const chimeDelay = triggerHaptic(
+        [520, 160, 520, 160, 520],
+        "진동 알림: 정차 완료 · 이제 내리세요",
+        "arrival",
+      );
       const msg = `안전하게 정차했어요. ${activeRoute.destinationStopName}입니다. 이제 천천히 내리세요.`;
       setAssistantMessage(msg);
-      speakMessage(msg);
+      speakMessage(msg, { delayMs: chimeDelay });
     }
     if (busMotionState === "stopped" && safeRecoveryMode) {
-      triggerHaptic([520, 160, 520, 160, 520], "진동 알림: 다음 정류장에 안전하게 정차했어요");
+      const chimeDelay = triggerHaptic(
+        [520, 160, 520, 160, 520],
+        "진동 알림: 다음 정류장에 안전하게 정차했어요",
+        "arrival",
+      );
       const msg = "다음 정류장에 안전하게 멈췄어요. 천천히 내리신 뒤 아래 내렸어 버튼을 눌러 주세요.";
       setAssistantMessage(msg);
-      speakMessage(msg);
+      speakMessage(msg, { delayMs: chimeDelay });
     }
     if (busMotionState === "stopped" && recoveryStage === "missed-waiting-stop") {
-      triggerHaptic([520, 160, 520, 160, 520], "진동 알림: 다음 정류장에 안전하게 정차했어요");
+      const chimeDelay = triggerHaptic(
+        [520, 160, 520, 160, 520],
+        "진동 알림: 다음 정류장에 안전하게 정차했어요",
+        "arrival",
+      );
       const msg = "다음 정류장에 멈췄어요. 천천히 내리신 뒤 위 완료 버튼을 눌러 주세요.";
       setAssistantMessage(msg);
-      speakMessage(msg);
+      speakMessage(msg, { delayMs: chimeDelay });
     }
   }, [
     activeRoute.destinationStopName,
@@ -876,6 +995,7 @@ export default function App() {
       speechRecognitionRef.current?.stop();
       if (stopDelayRef.current) window.clearTimeout(stopDelayRef.current);
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+      if (ttsDelayRef.current) window.clearTimeout(ttsDelayRef.current);
     };
   }, []);
 
@@ -998,16 +1118,26 @@ export default function App() {
     setDeviationCheckOpen(true);
     const msg = `예정된 경로와 다르게 이동하고 있을 수 있어요. 버스 번호(${activeRoute.busNumber}번)를 확인해 주세요. 버스가 멈춘 뒤 안전하게 이동해 주세요.`;
     setAssistantMessage(msg);
-    speakMessage(msg);
-    triggerHaptic([700, 180, 700, 180, 700], "경고 진동: 버스 번호를 확인해 주세요");
+    const chimeDelay = triggerHaptic(
+      [700, 180, 700, 180, 700],
+      "경고 진동: 버스 번호를 확인해 주세요",
+      "alert",
+    );
+    speakMessage(msg, { delayMs: chimeDelay });
   };
 
   const handleSendGuardianHelpSms = () => {
     const placeText = experienceMode === "journey" ? visibleStep.place : "춘천역 주변";
     const msg = `보호자(김민수)님께 ${placeText}에서 ${activeRoute.name} 이동 중 도움 요청 문자를 보냈습니다.`;
     setAssistantMessage(msg);
-    speakMessage("보호자님께 도움 요청 문자를 보냈어요. 잠시 제자리에 계시면 연락드릴 거예요.");
-    triggerHaptic([260, 120, 260], "진동 알림: 보호자 도움 요청 문자를 보냈어요");
+    const chimeDelay = triggerHaptic(
+      [260, 120, 260],
+      "진동 알림: 보호자 도움 요청 문자를 보냈어요",
+      "arrival",
+    );
+    speakMessage("보호자님께 도움 요청 문자를 보냈어요. 잠시 제자리에 계시면 연락드릴 거예요.", {
+      delayMs: chimeDelay,
+    });
   };
 
   const favoriteRoutes = useMemo(
@@ -1034,7 +1164,17 @@ export default function App() {
   }, [tripHistory]);
 
   return (
-    <main ref={appShellRef} className="app-shell">
+    <main
+      ref={appShellRef}
+      className="app-shell"
+      onClick={(event) => {
+        // Prevent sticky focus highlight after mobile touch / pointer taps while keeping keyboard focus
+        if (event.detail > 0) {
+          const btn = (event.target as HTMLElement | null)?.closest("button");
+          btn?.blur();
+        }
+      }}
+    >
       <div className="ambient ambient-one" />
       <div className="ambient ambient-two" />
 
@@ -1073,12 +1213,9 @@ export default function App() {
           <button
             type="button"
             className={`audio-toggle-btn ${voiceEnabled ? "is-on" : ""}`}
-            onClick={() => {
-              const next = !voiceEnabled;
-              setVoiceEnabled(next);
-              if (!next && "speechSynthesis" in window) {
-                window.speechSynthesis.cancel();
-              }
+            onClick={(event) => {
+              event.currentTarget.blur();
+              handleToggleVoice(!voiceEnabled);
             }}
             aria-label={voiceEnabled ? "음성 안내 끄기" : "음성 안내 켜기"}
           >
@@ -1657,7 +1794,10 @@ export default function App() {
                   <button
                     type="button"
                     key={command}
-                    onClick={() => handleCommand(command)}
+                    onClick={(event) => {
+                      event.currentTarget.blur();
+                      handleCommand(command);
+                    }}
                   >
                     “{command}”
                   </button>
@@ -1670,7 +1810,10 @@ export default function App() {
                   remainingStops === 0 && (
                     <button
                       type="button"
-                      onClick={() => handleCommand("내렸어")}
+                      onClick={(event) => {
+                        event.currentTarget.blur();
+                        handleCommand("내렸어");
+                      }}
                     >
                       “내렸어”
                     </button>
@@ -1678,7 +1821,10 @@ export default function App() {
                 {experienceMode === "journey" && stepIndex < 3 && (
                   <button
                     type="button"
-                    onClick={() => handleCommand("목적지 바꾸기")}
+                    onClick={(event) => {
+                      event.currentTarget.blur();
+                      handleCommand("목적지 바꾸기");
+                    }}
                   >
                     “목적지 바꾸기”
                   </button>
@@ -1744,21 +1890,20 @@ export default function App() {
         <SettingsModal
           onClose={() => setShowGuardianPanel(false)}
           voiceEnabled={voiceEnabled}
-          onToggleVoice={(enabled) => {
-            setVoiceEnabled(enabled);
-            if (!enabled && "speechSynthesis" in window) {
-              window.speechSynthesis.cancel();
-            }
-          }}
+          onToggleVoice={handleToggleVoice}
           voiceSpeed={voiceSpeed}
-          onChangeVoiceSpeed={setVoiceSpeed}
+          onChangeVoiceSpeed={handleChangeVoiceSpeed}
           onTestVoice={() =>
             speakMessage("안녕하세요. 잇다 음성 안내입니다. 천천히 또박또박 안내해 드릴게요.")
           }
           vibrationEnabled={vibrationEnabled}
           onToggleVibration={setVibrationEnabled}
           onTestVibration={() =>
-            triggerHaptic([260, 120, 260], "진동 확인: 내릴 때 이렇게 진동으로 알려드려요")
+            triggerHaptic(
+              [260, 120, 260],
+              "알림 확인: 내릴 때 이렇게 진동과 알림음으로 알려드려요",
+              "arrival",
+            )
           }
           guardianSharing={guardianSharing}
           onToggleGuardianSharing={setGuardianSharing}
